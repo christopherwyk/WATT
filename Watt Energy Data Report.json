@@ -1,0 +1,296 @@
+{
+  "name": "Watt Energy Data Report",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1200,
+        144
+      ],
+      "id": "32c17a1d-a662-41ab-bda2-30cd12bf0076",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://api.octopus.energy/v1/products/?is_prepay=false&page=1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -992,
+        144
+      ],
+      "id": "1b079013-55be-4ae3-ab54-5ae60da359c8",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.octopus.energy/v1/products/{{ $json.code }}/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -496,
+        144
+      ],
+      "id": "934e7ed9-53aa-4b16-a0a3-a3183ebe4166",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -832,
+        144
+      ],
+      "id": "bbb510cc-50e0-4208-b9f6-c668fb676d7e",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b68073b0-8d9b-4d6b-9ecf-454728f2ade8",
+              "leftValue": "={{ $json.direction }} ",
+              "rightValue": "=IMPORT",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -656,
+        144
+      ],
+      "id": "b3acaa02-946f-4319-b354-0495c1bf7a0e",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item.json;\n\nconst elec = item.single_register_electricity_tariffs?._H?.direct_debit_monthly;\nconst gas = item.single_register_gas_tariffs?._H?.direct_debit_monthly;\n\nreturn {\n  json: {\n    supplier: item.brand,\n    plan_name: item.display_name,\n    code: item.code,\n    is_variable: item.is_variable,\n    is_green: item.is_green,\n    exit_fee: elec?.exit_fees_inc_vat ?? 0,\n    elec_unit_rate_p: elec?.standard_unit_rate_inc_vat ?? null,\n    elec_standing_charge_p: elec?.standing_charge_inc_vat ?? null,\n    gas_unit_rate_p: gas?.standard_unit_rate_inc_vat ?? null,\n    gas_standing_charge_p: gas?.standing_charge_inc_vat ?? null,\n    fetched_at: new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        144
+      ],
+      "id": "bb696eb2-b366-43a1-8542-3acb8cbda8dc",
+      "name": "JavaScript into data"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-20250514"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=I have the following JSON data containing live UK energy tariffs for the North West region retrieved today from the Octopus Energy API. Analyse this data and write a 1000-word consumer report.\n\nDATA:\n{{ $json.tariff_data }}\n\nYour report must:\n- Use ONLY the exact pence figures in the data above\n- Compare unit rates and standing charges across all tariffs\n- Calculate estimated annual costs assuming 3,100 kWh electricity and 12,000 kWh gas\n- Assess contract flexibility and exit fees\n- Note which tariffs are green energy\n- End with a numbered top 3 recommendation\n\nWrite the report now. Do not explain how to build a system. Just write the report.\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        -80,
+        144
+      ],
+      "id": "74e29d35-a3e2-442a-9c6e-8d926c288158",
+      "name": "Message a model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "bVM89qjoEctWfrZf",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\n\nreturn {\n  json: {\n    tariff_data: JSON.stringify(items, null, 2)\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        144
+      ],
+      "id": "0d981a41-ee14-41a7-a461-73fa3f5db1b1",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "jsCode": "const report = $input.item.json.content[0].text;\n\nconst binaryData = await this.helpers.prepareBinaryData(\n  Buffer.from(report, 'utf8'),\n  'energy-report.md',\n  'text/markdown'\n);\n\nreturn {\n  json: {\n    generated_at: new Date().toISOString()\n  },\n  binary: {\n    data: binaryData\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        -96
+      ],
+      "id": "44dec957-50cf-42c0-aa82-8dd2f2881f39",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://discord.com/api/webhooks/1488897607861276853/I1FBBH6xS2DxkmKQAqhZYgp5hNgrjg90dP1jWq-VzOm1V511JgR2F12H4EYvMGFJPqi_",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "= ## UK Energy Report\\n{{ $json.content[0].text.slice(0, 1900) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        272,
+        144
+      ],
+      "id": "f30c8d86-9c20-419f-ba83-bbd494f82f24",
+      "name": "HTTP Request2"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "JavaScript into data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JavaScript into data": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "bc5dac20-1c07-4aa2-8e87-693b0a103294",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2db64a6b9cedbf6745294ffc3019962eeb4fc360cd5cf61893b5b07f2b569da7"
+  },
+  "id": "f9OzP5pD5XvEtK8A",
+  "tags": []
+}
