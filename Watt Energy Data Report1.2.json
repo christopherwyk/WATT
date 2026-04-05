@@ -1,0 +1,390 @@
+{
+  "name": "Watt Energy Data Report",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        -528
+      ],
+      "id": "32c17a1d-a662-41ab-bda2-30cd12bf0076",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.octopus.energy/v1/products/{{ $json.code }}/",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -128,
+        -528
+      ],
+      "id": "934e7ed9-53aa-4b16-a0a3-a3183ebe4166",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "results",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -432,
+        -528
+      ],
+      "id": "bbb510cc-50e0-4208-b9f6-c668fb676d7e",
+      "name": "Split Out"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b68073b0-8d9b-4d6b-9ecf-454728f2ade8",
+              "leftValue": "={{ $json.direction }} ",
+              "rightValue": "=IMPORT",
+              "operator": {
+                "type": "string",
+                "operation": "contains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -288,
+        -528
+      ],
+      "id": "b3acaa02-946f-4319-b354-0495c1bf7a0e",
+      "name": "Filter"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const item = $input.item.json;\n\nconst elec = item.single_register_electricity_tariffs?._H?.direct_debit_monthly;\nconst gas = item.single_register_gas_tariffs?._H?.direct_debit_monthly;\n\n// Skip items with no electricity data for North West region\nif (!elec) {\n  return { json: { skip: true } };\n}\n\nconst isAgile = item.is_tracker || (item.code && item.code.startsWith('AGILE'));\nconst isEV = item.code && (item.code.includes('GO') || item.code.includes('INTELLI'));\nconst isCosy = item.code && item.code.includes('COSY');\n\nlet tariffType = 'standard';\nif (isAgile) tariffType = 'dynamic';\nelse if (isEV) tariffType = 'EV';\nelse if (isCosy) tariffType = 'heat_pump';\n\nreturn {\n  json: {\n    supplier: item.brand,\n    plan_name: item.display_name,\n    code: item.code,\n    type: tariffType,\n    is_variable: item.is_variable,\n    is_green: item.is_green,\n    is_tracker: item.is_tracker,\n    term_months: item.term ?? null,\n    exit_fee_gbp: (elec.exit_fees_inc_vat ?? 0) / 100,\n    elec_unit_rate_p: elec.standard_unit_rate_inc_vat ?? null,\n    elec_unit_rate_note: isAgile ? 'Dynamic pricing - varies every 30 min with wholesale market' : null,\n    elec_standing_charge_p: elec.standing_charge_inc_vat ?? null,\n    gas_unit_rate_p: gas ? (gas.standard_unit_rate_inc_vat ?? null) : null,\n    gas_standing_charge_p: gas ? (gas.standing_charge_inc_vat ?? null) : null,\n    fetched_at: new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        -336
+      ],
+      "id": "bb696eb2-b366-43a1-8542-3acb8cbda8dc",
+      "name": "JavaScript into data"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "claude-sonnet-4-20250514",
+          "mode": "list",
+          "cachedResultName": "claude-sonnet-4-20250514"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=I have the following JSON data containing live UK energy tariffs for the North West region retrieved today from the Octopus Energy API. Analyse this data and write a 1000-word consumer report.\n\nDATA:\n{{ $json.tariff_data }}\n\nYour report must:\n- Use ONLY the exact pence figures in the data above\n- Compare unit rates and standing charges across all tariffs\n- Calculate estimated annual costs assuming 3,100 kWh electricity and 8,000 kWh gas\n- Assess contract flexibility and exit fees\n- Note which tariffs are green energy\n- End with a numbered top 3 recommendation\n\nWrite the report now. Do not explain how to build a system. Just write the report.\n\nNote: some tariffs are specialist (EV, heat pump, dynamic pricing) — flag these clearly \nand explain who they are suitable for rather than comparing them directly on unit rate alone.\n"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.anthropic",
+      "typeVersion": 1,
+      "position": [
+        -464,
+        128
+      ],
+      "id": "74e29d35-a3e2-442a-9c6e-8d926c288158",
+      "name": "Message a model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "bVM89qjoEctWfrZf",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map(i => i.json);\n\nreturn {\n  json: {\n    tariff_data: JSON.stringify(items, null, 2)\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -208,
+        -128
+      ],
+      "id": "0d981a41-ee14-41a7-a461-73fa3f5db1b1",
+      "name": "Aggregate"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://discord.com/api/webhooks/1488897607861276853/I1FBBH6xS2DxkmKQAqhZYgp5hNgrjg90dP1jWq-VzOm1V511JgR2F12H4EYvMGFJPqi_",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "content",
+              "value": "= ## UK Energy Report\\n{{ $json.content[0].text.slice(0, 1900) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -112,
+        128
+      ],
+      "id": "f30c8d86-9c20-419f-ba83-bbd494f82f24",
+      "name": "HTTP Request2"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "972e1bd4-13f6-4b36-b019-cb1a5612466e",
+              "leftValue": "={{ $json.skip }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.3,
+      "position": [
+        -192,
+        -336
+      ],
+      "id": "f8674fbf-e8a3-4982-a66b-43581cf4f937",
+      "name": "Filter1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const html = $input.item.json.data;\n\n// Extract electricity unit rate\nconst elecMatch = html.match(/electricity.*?([\\d.]+)\\s*pence per kilowatt/i);\nconst elecRate = elecMatch ? parseFloat(elecMatch[1]) : null;\n\n// Extract electricity standing charge\nconst elecSCMatch = html.match(/standing charge is ([\\d.]+) pence per day.*electricity/i);\nconst elecSC = elecSCMatch ? parseFloat(elecSCMatch[1]) : null;\n\n// Extract gas unit rate\nconst gasMatch = html.match(/gas.*?([\\d.]+)\\s*pence per kilowatt/i);\nconst gasRate = gasMatch ? parseFloat(gasMatch[1]) : null;\n\n// Extract gas standing charge\nconst gasSCMatch = html.match(/standing charge is ([\\d.]+) pence per day.*gas/i);\nconst gasSC = gasSCMatch ? parseFloat(gasSCMatch[1]) : null;\n\n// Extract annual cap figure\nconst annualMatch = html.match(/£([\\d,]+) per year/i);\nconst annualCap = annualMatch ? annualMatch[1] : null;\n\nreturn {\n  json: {\n    supplier: 'OFGEM_PRICE_CAP',\n    plan_name: 'Price Cap Benchmark (SVT)',\n    code: 'OFGEM-CAP-Q2-2026',\n    type: 'price_cap_benchmark',\n    is_variable: true,\n    is_green: false,\n    is_tracker: false,\n    term_months: 3,\n    exit_fee_gbp: 0,\n    elec_unit_rate_p: elecRate,\n    elec_standing_charge_p: elecSC,\n    gas_unit_rate_p: gasRate,\n    gas_standing_charge_p: gasSC,\n    annual_cap_gbp: annualCap,\n    note: 'National average cap rates — Big 6 SVTs charged at or near these levels',\n    fetched_at: new Date().toISOString()\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        -336
+      ],
+      "id": "17fffd67-bf58-4859-b7b2-17f8f3b2a8b0",
+      "name": "Code in JavaScript1"
+    },
+    {
+      "parameters": {
+        "url": "https://www.ofgem.gov.uk/information-consumers/energy-advice-households/energy-price-cap-explained",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -704,
+        -336
+      ],
+      "id": "18bd49ae-3776-47b2-a80a-8b191e9b9b8f",
+      "name": "OFGEM price cap http request"
+    },
+    {
+      "parameters": {
+        "url": "https://api.octopus.energy/v1/products/?is_prepay=false&page=1",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -592,
+        -528
+      ],
+      "id": "1b079013-55be-4ae3-ab54-5ae60da359c8",
+      "name": "Octopus DATA"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Octopus DATA",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "OFGEM price cap http request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "JavaScript into data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "JavaScript into data": {
+      "main": [
+        [
+          {
+            "node": "Filter1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter1": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        []
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OFGEM price cap http request": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Octopus DATA": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "69e7790c-6dc2-4499-b13b-6bd30e50f681",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2db64a6b9cedbf6745294ffc3019962eeb4fc360cd5cf61893b5b07f2b569da7"
+  },
+  "id": "f9OzP5pD5XvEtK8A",
+  "tags": []
+}
