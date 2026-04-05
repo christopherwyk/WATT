@@ -1,6 +1,9 @@
 # ⚡ Watt — AI Energy Intelligence Agent
 
-An autonomous n8n agent that fetches live UK energy tariff data from the Octopus Energy API, processes it through multi-stage filtering and normalisation logic, and delivers a Claude-generated intelligence report directly to Discord — on a schedule, without manual intervention.
+An autonomous n8n agent that fetches live UK energy tariff data from 
+the Octopus Energy API, processes it through multi-stage filtering and 
+normalisation logic, and delivers a Claude-generated intelligence report 
+directly to Discord — on a schedule, without manual intervention.
 
 ---
 
@@ -8,14 +11,21 @@ An autonomous n8n agent that fetches live UK energy tariff data from the Octopus
 
 Watt runs automatically and performs the following in sequence:
 
-1. **Fetches** all available Octopus Energy products via the public API (27 products)
+1. **Fetches** all available Octopus Energy and Co-op Energy products 
+   via the public API (27 products)
 2. **Splits** the product list into individual records for processing
 3. **Filters** down to IMPORT tariffs only (15 relevant tariffs)
 4. **Retrieves** unit rates for each tariff via individual HTTP requests
-5. **Normalises** all rate data to the North West England region
-6. **Aggregates** all 15 tariff datasets into a single structured payload
-7. **Generates** a 1,000-word intelligence report using Claude AI (Anthropic)
-8. **Delivers** the final report to a Discord channel via webhook
+5. **Normalises** all rate data to the North West England region (`_H`)
+6. **Classifies** each tariff by type (standard, dynamic, EV, heat pump)
+7. **Merges** live tariff data with Ofgem price cap benchmark (Big 6 SVT reference)
+8. **Aggregates** all tariffs into a single structured payload
+9. **Generates** a 1,000-word intelligence report using Claude AI
+10. **Delivers** the final report to a Discord channel via webhook
+
+---
+
+## Workflow Architecture
 
 ---
 
@@ -48,91 +58,119 @@ Claude AI ──► 1,000-word tariff report
       ▼
 Discord ──► delivered to your channel
 ```
+---
+
+## Tariff Types Covered
+
+| Type | Example | Who it suits |
+|------|---------|--------------|
+| Standard variable | Flexible Octopus, Co-op Flexible | Most households |
+| Fixed rate | Co-op 10M Fixed, Cosy 12M Fixed | Stability seekers |
+| Dynamic pricing | Agile Octopus | Flexible households |
+| EV tariff | Octopus Go, Intelligent Octopus Go | EV owners |
+| Heat pump | Cosy Octopus | Heat pump owners |
+| Price cap benchmark | Ofgem SVT (Big 6 reference) | Comparison baseline |
+
+---
+
+## Data Sources
+
+| Source | Method | Auth |
+|--------|--------|------|
+| Octopus Energy API | REST — `v1/products/` | None (public) |
+| Ofgem price cap | Hardcoded quarterly | None |
+
+> Ofgem cap rates are updated manually each quarter.  
+> Next update: **27 May 2026** (for July–September 2026 cap)
 
 ---
 
 ## Tech Stack
 
 | Component | Tool |
-|---|---|
-| Automation platform | n8n |
-| Energy data source | Octopus Energy REST API (public) |
-| AI report generation | Anthropic Claude API |
-| Delivery channel | Discord Webhook |
-| Language (Code node) | JavaScript |
+|-----------|------|
+| Automation platform | n8n v2.14.2 (self-hosted, Windows) |
+| Energy data | Octopus Energy REST API (public) |
+| AI report generation | Anthropic Claude Sonnet (`claude-sonnet-4-20250514`) |
+| Report delivery | Discord webhook |
 
 ---
 
-## Setup & Configuration
+## Setup
 
 ### Prerequisites
+- n8n installed (native Windows or Docker)
+- Anthropic API key
+- Discord webhook URL
 
-- n8n instance (local via npm/Docker, or n8n Cloud)
-- Anthropic API key — [console.anthropic.com](https://console.anthropic.com)
-- Discord server with a webhook URL — Server Settings → Integrations → Webhooks
-- Octopus Energy API access (public, no key required for product listing)
+### Installation
 
-### Credentials to configure in n8n
+1. Clone this repo
+2. Import `Watt Energy Data Report.json` into n8n via  
+   **Settings → Import workflow**
+3. Add credentials:
+   - Anthropic API key in the Claude node
+   - Discord webhook URL in the final HTTP Request node
+4. Activate the workflow
 
-| Credential | Where to set it |
-|---|---|
-| `Anthropic API Key` | n8n Credentials → Anthropic API |
-| `Discord Webhook URL` | n8n Credentials → Discord Webhook or HTTP Header |
+### Ofgem Cap Update Schedule
 
-> ⚠️ Never commit real API keys or webhook URLs to this repository. Configure all credentials inside n8n's built-in credential manager.
-
-### Import the workflow
-
-1. Clone this repository
-2. Open your n8n instance
-3. Go to **Workflows** → click **⋮** → **Import from file**
-4. Select `watt-workflow.json`
-5. Configure your credentials (see above)
-6. Activate the workflow
-
----
-
-## Example Output
-
-The agent delivers a structured report to Discord covering:
-
-- Current cheapest IMPORT tariff in the North West region
-- Unit rate comparison across all 15 tariffs
-- Standing charge analysis
-- Recommended tariff based on typical household usage
-- Market trend observations
+| Quarter | Period | Announcement |
+|---------|--------|-------------|
+| Q2 2026 | Apr–Jun | 25 Feb 2026 ✓ |
+| Q3 2026 | Jul–Sep | 27 May 2026 |
+| Q4 2026 | Oct–Dec | 26 Aug 2026 |
+| Q1 2027 | Jan–Mar | 25 Nov 2026 |
 
 ---
 
-## Project Context
+## Changelog
 
-Watt was built as a portfolio project to demonstrate autonomous AI agent design using n8n — specifically: multi-step API chaining, data filtering and transformation logic, LLM-powered report generation, and cross-platform delivery.
+### v2.0 — April 2026
+- Added tariff type classification (dynamic, EV, heat pump, standard, fixed)
+- Added Ofgem price cap benchmark as Big 6 SVT reference point
+- Extended coverage to all 15 IMPORT tariffs including Agile, Go, 
+  Intelligent Go and Cosy Octopus
+- Improved Claude prompt with explicit data-driven analysis instructions
+- Switched report delivery to Discord webhook
 
-It forms part of a broader portfolio of AI automation projects available at [github.com/christopherwyk](https://github.com/christopherwyk).
+### v1.0 — Initial release
+- Octopus Agile tariff tracking
+- Claude AI report generation
+- Discord delivery
 
 ---
 
 ## Roadmap
 
-### Delivery
-- [ ] Email delivery option — send the report to an inbox alongside Discord
-- [ ] Multi-channel support — Slack, Telegram, or WhatsApp delivery
+### Phase 1 — Core pipeline (complete)
+- [x] Octopus Energy API — all 27 products
+- [x] Filter to 15 IMPORT tariffs, North West region
+- [x] Tariff classification (Agile, EV, heat pump, fixed, standard)
+- [x] Ofgem price cap benchmark (Q2 2026)
+- [x] Claude Sonnet 1000-word report
+- [x] Discord webhook delivery
+- [x] Weekly cron trigger
 
-### Data Sources
-- [ ] Agile Octopus real-time pricing (half-hourly rate tracking)
-- [ ] Gas tariff support alongside electricity
-- [ ] National Grid carbon intensity API — include grid carbon data in the report
-- [ ] Ofgem price cap data integration — benchmark tariffs against the cap
-- [ ] Historical rate tracking — store daily snapshots to Airtable or Google Sheets
+### Phase 2 — Data persistence (next)
+- [ ] SQLite storage — weekly tariff snapshots with timestamps
+- [ ] Historical trend context passed to Claude prompt
+- [ ] Quarterly Ofgem benchmark updates
 
-### Intelligence & Evaluation
-- [ ] Claude report evaluator — automated eval node that scores each generated report on accuracy, structure, and completeness (0–1.0 scoring) before delivery
-- [ ] Prompt version control — store prompt templates as versioned configs so report style can be updated without touching the workflow
-- [ ] Anomaly detection — flag unusual rate spikes or drops in the report automatically
+### Phase 3 — Expanded market coverage
+- [ ] Big 6 SVT rates as structured data node
+- [ ] Which? customer satisfaction scores in Claude context
 
-### Coverage
-- [ ] Multi-region support — extend normalisation beyond North West to all UK regions
-- [ ] Tariff comparison over time — track whether a tariff has gotten cheaper or more expensive week-on-week
+### Phase 4 — Raspberry Pi 5 deployment
+- [ ] Migrate n8n to Pi 5 via Docker alongside Home Assistant
+- [ ] Persistent SQLite volume mount
+
+### Phase 5 — Intelligence upgrades
+- [ ] Personal usage inputs for exact cost calculation
+- [ ] Agile half-hourly price forecast in report
+- [ ] Price alert Discord ping below threshold
+- [ ] Switching recommendation with annual saving calculation
+- [ ] Dockerised full stack published to GitHub
 
 ---
 
